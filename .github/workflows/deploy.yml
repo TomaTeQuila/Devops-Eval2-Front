@@ -1,0 +1,76 @@
+name: CI/CD Frontend
+
+# Se activa solo al hacer push en la rama deploy (IE4)
+on:
+  push:
+    branches:
+      - deploy
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-frontend
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Hub
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Login a Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build y Push imagen
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Tag con SHA del commit + latest para trazabilidad
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy en EC2 Frontend
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Deploy vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_FRONTEND_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Login a Docker Hub en la instancia EC2
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+            # Detener y eliminar contenedor anterior si existe
+            docker stop innovatech_frontend || true
+            docker rm innovatech_frontend || true
+
+            # Descargar la imagen más reciente
+            docker pull ${{ env.IMAGE_NAME }}:latest
+
+            # Levantar el nuevo contenedor con variables de entorno
+            docker run -d \
+              --name innovatech_frontend \
+              --restart unless-stopped \
+              -p 5000:5000 \
+              -e SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+              -e BACKEND_URL="http://${{ secrets.EC2_BACKEND_HOST }}:3000" \
+              -e PORT=5000 \
+              -e DEBUG=false \
+              ${{ env.IMAGE_NAME }}:latest
+
+            echo "✓ Frontend desplegado correctamente"

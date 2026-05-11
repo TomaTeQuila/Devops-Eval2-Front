@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+  # ── Base de datos MySQL ────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: innovatech_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      # Named volume para persistencia de datos (IE3)
+      - mysql_data:/var/lib/mysql
+      # Scripts SQL de inicialización
+      - ../Data_Eval2:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend Node.js ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ../Back_EVAL2
+      dockerfile: Dockerfile
+    container_name: innovatech_backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_PORT: 3306
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend_network
+      - frontend_network
+
+  # ── Frontend Python Flask ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: innovatech_frontend
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY}
+      BACKEND_URL: http://backend:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - backend
+    networks:
+      - frontend_network
+
+# ── Volúmenes (IE3) ───────────────────────────────────────────────────────────
+# Named volume: los datos de MySQL persisten aunque el contenedor se reinicie.
+# Se eligió named volume sobre bind mount porque Docker gestiona la ubicación
+# y es portable entre entornos (local y EC2).
+volumes:
+  mysql_data:
+    driver: local
+
+# ── Redes ─────────────────────────────────────────────────────────────────────
+# backend_network: comunicación privada DB ↔ Backend (BD no expuesta al front)
+# frontend_network: comunicación Frontend ↔ Backend
+networks:
+  backend_network:
+    driver: bridge
+  frontend_network:
+    driver: bridge
