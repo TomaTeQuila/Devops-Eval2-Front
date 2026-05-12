@@ -29,7 +29,7 @@ services:
   # ── Backend Node.js ───────────────────────────────────────────────────────
   backend:
     build:
-      context: ../Back_EVAL2
+      context: ../Devops-Eval2-Back
       dockerfile: Dockerfile
     container_name: innovatech_backend
     restart: unless-stopped
@@ -45,6 +45,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - backend_network
       - frontend_network
@@ -64,7 +69,8 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - frontend_network
 

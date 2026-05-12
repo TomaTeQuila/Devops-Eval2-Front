@@ -28,7 +28,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build y Push imagen
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -59,8 +59,8 @@ jobs:
             docker stop innovatech_frontend || true
             docker rm innovatech_frontend || true
 
-            # Descargar la imagen más reciente
-            docker pull ${{ env.IMAGE_NAME }}:latest
+            # Descargar imagen por SHA (inmutable, evita race conditions)
+            docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
             # Levantar el nuevo contenedor con variables de entorno
             docker run -d \
@@ -71,6 +71,9 @@ jobs:
               -e BACKEND_URL="http://${{ secrets.EC2_BACKEND_HOST }}:3000" \
               -e PORT=5000 \
               -e DEBUG=false \
-              ${{ env.IMAGE_NAME }}:latest
+              ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+            # Limpiar imágenes antiguas para liberar espacio en disco
+            docker image prune -f
 
             echo "✓ Frontend desplegado correctamente"
