@@ -7,7 +7,7 @@ on:
       - deploy
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-frontend
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-frontend-devops-eval2
 
 jobs:
   build-and-push:
